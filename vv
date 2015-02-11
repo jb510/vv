@@ -294,6 +294,7 @@ create_config_file() {
 {
 	echo "{"
 	echo "	\"path\": \"$path\""
+	echo "	\"www\": \"$www\""
 	echo "}"
 } >> ~/.vv-config
 info "$HOME/.vv-config was created."
@@ -309,6 +310,8 @@ load_config_values() {
 	#Load path from config file
 	path="$( getJsonVal "['path']" < ~/.vv-config )"
 	path="$(echo "$path" | sed -e 's/^"//'  -e 's/"$//')"
+	www="$( getJsonVal "['www']" < ~/.vv-config )"
+	www="$(echo "$www" | sed -e 's/^"//'  -e 's/"$//')"
 }
 
 load_config_autopdate_config_values() {
@@ -381,7 +384,15 @@ get_vvv_path(){
 			done
 		fi
 	fi
+
+# set alternative web root
+# if [ -e ~/hgv/Vagrantfile ] && [ -z $force_path ]; then
+# 	www=~/hgv/hgv_data/sites
+# fi
+
 	path=${path%/}
+#	www=${www%/}
+
 }
 
 get_list_sites() {
@@ -392,7 +403,7 @@ get_list_sites() {
 }
 
 list_sites() {
-	cd "$path"/www
+	cd "$path"/"$www"
 	find . -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r -d '' filename; do
 		filename=${filename:2}
 		if [[ $filename != 'default' && $filename != 'phpcs' && $filename != 'wp-cli' ]]; then
@@ -410,7 +421,7 @@ list_sites() {
 				fi
 			else
 				# @TODO fix having Multiple URLs in vvv-hosts
-				url=$(<"$path"/www/"$filename"/vvv-hosts)
+				url=$(<"$path"/"$www"/"$filename"/vvv-hosts)
 				url=$(echo "$url" | sed -e 's/#.*$//' -e '/^$/d')
 				urls=$(echo "$url" | wc -l)
 				if (( "$urls" > 1 )); then
@@ -442,8 +453,8 @@ site_creation_questions() {
 		if [ -f "$path/config/nginx-config/sites/$site.conf" ]; then
 			error "Site $site already exists. Remove config/nginx-config/sites/$site.conf to run setup again."
 			unset site
-		elif [ -d "$path/www/$site" ]; then
-			warning "Directory $path/www/$site already exists. Existing VVV configuration files will be overwritten."
+		elif [ -d "$path/$www/$site" ]; then
+			warning "Directory $path/$www/$site already exists. Existing VVV configuration files will be overwritten."
 		fi
 	fi
 	while [ -z "$site" ]; do
@@ -455,8 +466,8 @@ site_creation_questions() {
 		elif [ -f "$path/config/nginx-config/sites/$site.conf" ]; then
 			error "Site $site already exists. Remove config/nginx-config/sites/$site.conf to run setup again."
 			unset site
-		elif [ -d "$path/www/$site" ]; then
-			warning "Directory $path/www/$site already exists. Existing VVV configuration files will be overwritten."
+		elif [ -d "$path/$www/$site" ]; then
+			warning "Directory $path/$www/$site already exists. Existing VVV configuration files will be overwritten."
 		fi
 	done
 
@@ -554,10 +565,10 @@ site_creation_questions() {
 			install_text='multisite-install --subdomains'
 		fi
 
-		if [[ ! -z $git_repo && -d "$path/www/$site" ]]; then
-			error "$path/www/$site already exists. Skipping git clone."
+		if [[ ! -z $git_repo && -d "$path/$www/$site" ]]; then
+			error "$path/$www/$site already exists. Skipping git clone."
 			unset git_repo
-		elif [[ -z "$git_repo" && ! -d "$path/www/$site" ]]; then
+		elif [[ -z "$git_repo" && ! -d "$path/$www/$site" ]]; then
 			if [ "$use_defaults" = "false" ]; then
 				prompt "Git repo to clone as wp-content (leave blank to skip)"
 				read -r git_repo
@@ -619,7 +630,7 @@ confirm_site_creation() {
 	# =============================================================================
 	info "\nAbout to perform the following:"
 	# @ TODO
-	echo -e "* Halt Vagrant (if running)\n* Create directory $site in $path/www\n* Create files vvv-init.sh, wp-cli.yml, and vvv-hosts in directory $site\n* Create file $site.conf in $path/config/nginx-config/sites"
+	echo -e "* Halt Vagrant (if running)\n* Create directory $site in $path/$www\n* Create files vvv-init.sh, wp-cli.yml, and vvv-hosts in directory $site\n* Create file $site.conf in $path/config/nginx-config/sites"
 	if [[ -z "$files_only" ]]; then
 		echo -e "* Run \`vagrant up --provision\` to initialize site"
 	else
@@ -653,7 +664,7 @@ confirm_site_creation() {
 create_site_files(){
 	# Create site folder with vvv-init.sh file
 	# =============================================================================
-	cd "$path"/www
+	cd "$path"/"$www"
 	info "Creating site directory, wp-cli.yml, and vvv-init.sh file... "
 	if [ ! -d "$site" ]; then
 		mkdir $site
@@ -674,12 +685,12 @@ PHP"
 
 	blueprint_text=''
 	if [[ ! -z "$blueprint" ]]; then
-		cp "$path"/vv-blueprints.json "$path"/www/"$site"/vv-blueprints.json
+		cp "$path"/vv-blueprints.json "$path"/"$www"/"$site"/vv-blueprints.json
 		blueprint_text="curl -o vv-install -s https://raw.githubusercontent.com/bradp/vv/vv-install/vv-install && php vv-install $blueprint $web_root && rm vv-blueprints.json"
 	fi
 
 	if [[ ! -z "$db_import" ]]; then
-		cp "$db_import" "$path"/www/"$site"/"$site".sql
+		cp "$db_import" "$path"/"$www"/"$site"/"$site".sql
 	fi
 
 	if [ "$no_wp" = "false" ]; then
@@ -728,7 +739,7 @@ PHP"
 
 	# Add vvv-hosts file for domain in the site's www root
 	# =============================================================================
-	cd "$path"/www/"$site"
+	cd "$path"/"$www"/"$site"
 	info "Adding $domain to new vvv-hosts file... "
 	touch vvv-hosts
 	printf "%s\n" "$domain" >> vvv-hosts
@@ -778,7 +789,7 @@ creation_success_message() {
 	fi
 
 	success "New VVV Site Setup: Done!"
-	echo "Directory: $path/www/$site"
+	echo "Directory: $path/$www/$site"
 	echo "URL:       $domain"
 	echo "Username:  $username"
 	echo "Password:  $password"
@@ -794,8 +805,8 @@ create_site() {
 }
 
 not_valid_site() {
-	if [[ -z $site || ! -d "$path/www/$site" ]]; then
-		error "You must enter a valid directory from $path/www/."
+	if [[ -z $site || ! -d "$path/$www/$site" ]]; then
+		error "You must enter a valid directory from $path/$www/."
 		unset site
 	elif [[ $site = 'wordpress-default' || $site = 'wordpress-develop' || $site = 'wordpress-trunk' || $site = 'default' || $site = 'phpcs' || $site = 'vvv-hosts' || $site = 'wp-cli' || $site = '.gitshow' ]]; then
 		error "This script can't delete the default VVV folders."
@@ -817,7 +828,7 @@ remove_site() { # @TODO refactor this if we need to
 		not_valid_site
 	done
 
-	info "\nAbout to perform the following:\n\n* Halt Vagrant (if running)\n* Delete directory $site in $path/www\n* Delete file $site.conf in $path/config/nginx-config/sites\n* Remove database creation commands from init-custom.sql\n* Remove any deployments set up with vv\n"
+	info "\nAbout to perform the following:\n\n* Halt Vagrant (if running)\n* Delete directory $site in $path/$www\n* Delete file $site.conf in $path/config/nginx-config/sites\n* Remove database creation commands from init-custom.sql\n* Remove any deployments set up with vv\n"
 	while [ -z "$continue_delete" ]; do
 		prompt "Continue (y/n) "
 		read -r continue_delete
@@ -829,7 +840,7 @@ remove_site() { # @TODO refactor this if we need to
 
 			# Delete the site folder
 			info "Removing directory $site... "
-			rm -rf "$path"/www/"$site"
+			rm -rf "$path"/$www/"$site"
 			echo "Done"
 
 			# Remove the nginx conf file
